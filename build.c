@@ -2,7 +2,5 @@
 
 int main(int argc, char** argv)
 {
-    CPM_REBUILD_SELF(argc, argv);
-    cpm_build_now();
-    cpm_build_async();
+    cpm_log(CPM_LOG_INFO, "Hello,world!\n");
 }

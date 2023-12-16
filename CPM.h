@@ -7,6 +7,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <stdbool.h>
+#include <time.h>
+
+#define KERR "\x1B[31m" // RED
+#define KWAR "\x1B[33m" // YELLOW
+#define KMSG "\x1B[35m" // MAGENTA
+#define KNRM "\x1B[0m"  // NORMAL COLOR
+
+
 // =========================== //
 // ENUMS & STRUCTS DECLARATION //
 // =========================== //
@@ -32,9 +41,9 @@ typedef struct BuildProperties
 
 typedef enum LOG_LEVEL
 {
-    LOG_INFO,
-    LOG_WARNING,
-    LOG_ERROR,
+    CPM_LOG_INFO,
+    CPM_LOG_WARNING,
+    CPM_LOG_ERROR,
 } logLevel_e;
 
 typedef enum directory_operation
@@ -43,13 +52,6 @@ typedef enum directory_operation
     DIR_DELETE
 } dirOps_e;
 
-
-typedef struct STATUS
-{
-    bool message_available;
-    char* message;
-    int code; 
-} status_t;
 
 // =========================== //
 //      STRING FUNCTIONS       //
@@ -60,13 +62,27 @@ String_t string_from_cstr(const char* cstr)
     String_t res; 
     size_t strsize = strlen(cstr);
     res.m_cap = strsize + 5;
-    res.m_inner_ptr = (char*) malloc(res.m_cap);
+    res.m_inner_ptr = (char*) calloc(1, res.m_cap);
     strcpy(res.m_inner_ptr, cstr);
     res.m_cursize = strsize;
     return res;
 }
 
-status_t append_cstr(String_t* str, const char* cstr)
+String_t string_new()
+{
+    String_t res; 
+    res.m_cursize = 0;
+    res.m_cap = 5;
+    res.m_inner_ptr = (char*) calloc(1, res.m_cap);
+    return res;
+}
+
+const char* string_get(String_t* string)
+{
+    return string->m_inner_ptr;
+}
+
+void string_append_cstr(String_t* str, const char* cstr, bool append_space_ending)
 {
     size_t cstrsize = strlen(cstr);
     if(str->m_cap < str->m_cursize + cstrsize)
@@ -77,14 +93,54 @@ status_t append_cstr(String_t* str, const char* cstr)
         {
             str->m_cap *= 2;
         }
-        char* new_inner = (char*) realloc(str->m_inner_ptr, str->m_cap);
+        char* new_inner = (char*) realloc(str->m_inner_ptr, str->m_cap + 2); // plus 2 just in case of space + null terminator
         if (!new_inner)
         {
-            
+            perror("String Error, failed to append to string_t: NULL POINTER");
+            exit(1);
         }
-
+        str->m_inner_ptr = new_inner;
     }
+    strcat(str->m_inner_ptr, cstr);
+    if(append_space_ending) strcat(str->m_inner_ptr, " ");
 }
+
+/* MISC FUNCTIONS*/
+void cpm_log(logLevel_e loglvl, const char *fmt, ...)
+{
+    time_t current_time;
+    struct tm *time_info;
+
+    time(&current_time);
+    time_info = localtime(&current_time);
+
+    String_t modstr = string_new();
+    char timestr[128];
+    snprintf(timestr, 128,  "(%02d:%02d:%02d)", time_info->tm_hour, time_info->tm_min, time_info->tm_sec);
+    switch (loglvl)
+    {
+    case CPM_LOG_INFO:
+        string_append_cstr(&modstr, KMSG, false);
+        string_append_cstr(&modstr, "LOG", true);
+        string_append_cstr(&modstr, timestr, false);
+        string_append_cstr(&modstr, ":", true);
+        string_append_cstr(&modstr, fmt, false);
+        string_append_cstr(&modstr, KNRM, false);
+        break;
+    
+    default:
+        break;
+    }
+    va_list args;
+    va_start(args, fmt);
+    
+    fprintf(stdout, fmt, args);
+
+    va_end(args);
+}
+
+#define CPM_REBUILD_SELF(argc, argv)    \
+
 
 
 /* PRIMARY FUNCTIONS*/
@@ -115,10 +171,16 @@ void cpm_build_async_poll(BuildProperties_t *bp)
 
 
 
-/* MISC FUNCTIONS*/
-void cpm_log(logLevel_e loglvl, const char *message, ...);
+
+
+
 
 /* FILE & DIRECTORY OPERATIONS */
 void dir_ops(dirOps_e directory_operations, const char *dir_name);
+
+
+
+
+
 
 #endif
