@@ -15,7 +15,6 @@
 #define KMSG "\x1B[35m" // MAGENTA
 #define KNRM "\x1B[0m"  // NORMAL COLOR
 
-
 // =========================== //
 // ENUMS & STRUCTS DECLARATION //
 // =========================== //
@@ -52,17 +51,16 @@ typedef enum directory_operation
     DIR_DELETE
 } dirOps_e;
 
-
 // =========================== //
 //      STRING FUNCTIONS       //
 // =========================== //
 
-String_t string_from_cstr(const char* cstr)
+String_t string_from_cstr(const char *cstr)
 {
-    String_t res; 
+    String_t res;
     size_t strsize = strlen(cstr);
     res.m_cap = strsize + 5;
-    res.m_inner_ptr = (char*) calloc(1, res.m_cap);
+    res.m_inner_ptr = (char *)calloc(1, res.m_cap);
     strcpy(res.m_inner_ptr, cstr);
     res.m_cursize = strsize;
     return res;
@@ -70,30 +68,30 @@ String_t string_from_cstr(const char* cstr)
 
 String_t string_new()
 {
-    String_t res; 
+    String_t res;
     res.m_cursize = 0;
     res.m_cap = 5;
-    res.m_inner_ptr = (char*) calloc(1, res.m_cap);
+    res.m_inner_ptr = (char *)calloc(1, res.m_cap);
     return res;
 }
 
-const char* string_get(String_t* string)
+const char *string_get(String_t *string)
 {
     return string->m_inner_ptr;
 }
 
-void string_append_cstr(String_t* str, const char* cstr, bool append_space_ending)
+void string_append_cstr(String_t *str, const char *cstr, bool append_space_ending)
 {
     size_t cstrsize = strlen(cstr);
-    if(str->m_cap < str->m_cursize + cstrsize)
+    char *new_inner = NULL;
+    if (str->m_cap < str->m_cursize + cstrsize + 2)
     {
-        str->m_cap *= 2;
-    
-        while(str->m_cap < str->m_cursize + cstrsize)
+
+        while (str->m_cap < str->m_cursize + cstrsize + 2)
         {
-            str->m_cap *= 2;
+            str->m_cap += 5;
         }
-        char* new_inner = (char*) realloc(str->m_inner_ptr, str->m_cap + 2); // plus 2 just in case of space + null terminator
+        new_inner = (char *)realloc(str->m_inner_ptr, str->m_cap);
         if (!new_inner)
         {
             perror("String Error, failed to append to string_t: NULL POINTER");
@@ -102,8 +100,12 @@ void string_append_cstr(String_t* str, const char* cstr, bool append_space_endin
         str->m_inner_ptr = new_inner;
     }
     strcat(str->m_inner_ptr, cstr);
-    if(append_space_ending) strcat(str->m_inner_ptr, " ");
     str->m_cursize += cstrsize;
+    if (append_space_ending)
+    {
+        strcat(str->m_inner_ptr, " ");
+        str->m_cursize += 1;
+    }
 }
 
 /* MISC FUNCTIONS*/
@@ -117,7 +119,7 @@ void cpm_log(logLevel_e loglvl, const char *fmt, ...)
 
     String_t modstr = string_new();
     char timestr[128];
-    snprintf(timestr, 128,  "(%02d:%02d:%02d)", time_info->tm_hour, time_info->tm_min, time_info->tm_sec);
+    snprintf(timestr, 128, "(%02d:%02d:%02d)", time_info->tm_hour, time_info->tm_min, time_info->tm_sec);
     switch (loglvl)
     {
     case CPM_LOG_INFO:
@@ -125,63 +127,59 @@ void cpm_log(logLevel_e loglvl, const char *fmt, ...)
         string_append_cstr(&modstr, "LOG", true);
         string_append_cstr(&modstr, timestr, false);
         string_append_cstr(&modstr, ":", true);
-        string_append_cstr(&modstr, fmt, false);
-        string_append_cstr(&modstr, KNRM, false);
+        fprintf(stdout, "%s", string_get(&modstr));
         break;
-    
+    case CPM_LOG_WARNING:
+        string_append_cstr(&modstr, KWAR, false);
+        string_append_cstr(&modstr, "WARNING", true);
+        string_append_cstr(&modstr, timestr, false);
+        string_append_cstr(&modstr, ":", true);
+        fprintf(stdout, "%s", string_get(&modstr));
+        break;
+    case CPM_LOG_ERROR:
+        string_append_cstr(&modstr, KERR, false);
+        string_append_cstr(&modstr, "ERROR", true);
+        string_append_cstr(&modstr, timestr, false);
+        string_append_cstr(&modstr, ":", true);
+        fprintf(stdout, "%s", string_get(&modstr));
+        break;
+
     default:
         break;
     }
     va_list args;
     va_start(args, fmt);
-    
-    fprintf(stdout, string_get(&modstr), args);
 
+    vfprintf(stdout, fmt, args);
     va_end(args);
+    fprintf(stdout, "%s", KNRM);
+    free(modstr.m_inner_ptr);
 }
 
-#define CPM_REBUILD_SELF(argc, argv)    \
-
-
+#define CPM_REBUILD_SELF(argc, argv)
 
 /* PRIMARY FUNCTIONS*/
 
-void cpm_configure_compiler(BuildProperties_t *bp, const char *compiler, const char *sources, 
+void cpm_configure_compiler(BuildProperties_t *bp, const char *compiler, const char *sources,
                             const char *build_path, const char *name, const char *extra_compiler_flags)
 {
-
 }
-                
-void cpm_configure_linker(BuildProperties_t *bp, const char *Include_path, const char *library_path, 
+
+void cpm_configure_linker(BuildProperties_t *bp, const char *Include_path, const char *library_path,
                           const char *additional_library, const char *linker_flags)
 {
-
 }
 void cpm_build(BuildProperties_t *bp)
 {
-
 }
 void cpm_build_async(BuildProperties_t *bp)
 {
-
 }
 void cpm_build_async_poll(BuildProperties_t *bp)
 {
-
 }
-
-
-
-
-
-
 
 /* FILE & DIRECTORY OPERATIONS */
 void dir_ops(dirOps_e directory_operations, const char *dir_name);
-
-
-
-
-
 
 #endif
