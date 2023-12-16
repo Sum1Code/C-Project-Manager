@@ -103,6 +103,7 @@ void string_append_cstr(String_t* str, const char* cstr, bool append_space_endin
     }
     strcat(str->m_inner_ptr, cstr);
     if(append_space_ending) strcat(str->m_inner_ptr, " ");
+    str->m_cursize += cstrsize;
 }
 
 /* MISC FUNCTIONS*/
@@ -134,7 +135,7 @@ void cpm_log(logLevel_e loglvl, const char *fmt, ...)
     va_list args;
     va_start(args, fmt);
     
-    fprintf(stdout, fmt, args);
+    fprintf(stdout, string_get(&modstr), args);
 
     va_end(args);
 }
