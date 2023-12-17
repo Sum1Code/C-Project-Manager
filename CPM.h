@@ -4,6 +4,10 @@
 #define NOT_IMPLEMENTED  cpm_log(CPM_LOG_ERROR, "%s is not implemented yet!\n", __func__);\
                          exit(1); 
 
+#ifndef GCC_VERSION
+#error "please define your current gcc major version by running gcc --version"
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,8 +43,8 @@ typedef struct BuildProperties
     String_t additionalLibrary;
     String_t object_name;
     String_t linker;
-    bool compiler_configured;
-    bool linker_configured;
+    int compiler_configured;
+    int linker_configured;
 } BuildProperties_t;
 
 typedef enum LOG_LEVEL
@@ -53,8 +57,15 @@ typedef enum LOG_LEVEL
 typedef enum directory_operation
 {
     DIR_CREATE,
-    DIR_DELETE
+    DIR_DELETE,
+    DIR_CHECK
 } dirOps_e;
+
+typedef enum LinkType
+{
+    LINK_DYNAMIC,
+    LINK_STATIC
+} LinkType_e;
 
 // =========================== //
 //      STRING FUNCTIONS       //
@@ -75,8 +86,8 @@ String_t string_new()
 {
     String_t res;
     res.m_cursize = 0;
-    res.m_cap = 0;
-    res.m_inner_ptr = NULL;
+    res.m_cap = 5;
+    res.m_inner_ptr = (char*) calloc(1, res.m_cap);
     return res;
 }
 
@@ -90,19 +101,24 @@ String_t string_cpy(String_t* str)
     return res;
 }
 
+/*gets the inner string from string struct, note return value is supposed to be immutable*/
 const char *string_get(String_t *string)
 {
     return string->m_inner_ptr;
 }
 
+/*Frees the internal string, do not use string after it's freed*/
+void string_free(String_t *string)
+{
+    string->m_cap = 0;
+    string->m_cursize = 0;
+    free(string->m_inner_ptr);
+    string->m_inner_ptr = NULL;
+}
+
 void string_append_cstr(String_t *str, const char *cstr, bool append_space_ending)
 {
 
-    if (NULL == str->m_inner_ptr)
-    {
-        str->m_cap = 5;
-        str->m_inner_ptr = (char*) calloc(1, str->m_cap);
-    }
     size_t cstrsize = strlen(cstr);
     char *new_inner = NULL;
     if (str->m_cap < str->m_cursize + cstrsize + 2)
@@ -182,7 +198,7 @@ void cpm_log(logLevel_e loglvl, const char *fmt, ...)
 // =========================== //
 
 
-void cpm_configure_compiler(BuildProperties_t *bp, const char *compiler, const char *sources,
+void cpm_configure_compiler(BuildProperties_t *bp, const char *compiler, const char *sources, const char *Include_path,
                             const char *build_path, const char *name, const char *extra_compiler_flags)
 {
     
@@ -203,10 +219,13 @@ void cpm_configure_compiler(BuildProperties_t *bp, const char *compiler, const c
         cpm_log(CPM_LOG_ERROR, "compiler, sourcesPath, and object_name should not be NULL\n");
         exit(1);
     }
+    if(NULL == Include_path)
+        bp->includePath = string_new();
+    else bp->includePath = string_from_cstr(Include_path);
     bp->compiler_configured = true;
 }
 
-void cpm_configure_linker(BuildProperties_t *bp, const char* linker,  const char *Include_path, const char *library_path,
+void cpm_configure_linker(BuildProperties_t *bp, const char* linker, const char *library_path,
                           const char *additional_library, const char *linker_flags)
 {
     if (!bp->compiler_configured){
@@ -214,12 +233,9 @@ void cpm_configure_linker(BuildProperties_t *bp, const char* linker,  const char
         exit(1);
     }
     if(NULL == linker) // if the linker is NULL then use the compiler as linker 
-        bp->linker = string_cpy(&bp->compiler);
+        bp->linker = string_from_cstr("ld");
     else bp->linker = string_from_cstr(linker); 
    
-    if(NULL == Include_path)
-        bp->includePath = string_new();
-    else bp->includePath = string_from_cstr(Include_path);
 
     if(NULL == additional_library)
         bp->additionalLibrary = string_new();
@@ -241,22 +257,74 @@ void cpm_configure_linker(BuildProperties_t *bp, const char* linker,  const char
 */
 void cpm_build(BuildProperties_t *bp)
 {
+    if(1 != bp->compiler_configured)
+    {
+        cpm_log(CPM_LOG_ERROR, "buildProperties hasn't been configured properly!\n");
+        cpm_log(CPM_LOG_ERROR, "make sure to run cpm_configure_compiler!\n");
+        exit(1);
+    }
     String_t compile = string_new();
     string_append_cstr(&compile, string_get(&bp->compiler), true);
     string_append_cstr(&compile, "-c", true);
+    string_append_cstr(&compile, string_get(&bp->CompilerFlags), true);
+    string_append_cstr(&compile, string_get(&bp->sourcesPath), true);
+    string_append_cstr(&compile, "-o", true);
+    string_append_cstr(&compile, string_get(&bp->buildPath), false);
+    string_append_cstr(&compile, "/", false);
+    string_append_cstr(&compile, string_get(&bp->object_name), false);
+    string_append_cstr(&compile, ".o", true);
+    cpm_log(CPM_LOG_INFO, "compiling: %s\n", string_get(&compile));
+    system(string_get(&compile));
+
+    string_free(&compile);
+
 }
+
+void cpm_link(BuildProperties_t* bp, LinkType_e linktype)
+{
+    String_t link = string_new();
+    string_append_cstr(&link, string_get(&bp->linker), true);   
+    switch(linktype)
+    {
+        case LINK_DYNAMIC:
+        string_append_cstr(&link, "--dynamic-linker", true);
+        string_append_cstr(&link, "/lib64/ld-linux-x86_64.so.2", true);
+        break;
+        case LINK_STATIC:
+        string_append_cstr(&link, "-static", true);
+        break;
+    }
+    string_append_cstr(&link, string_get(&bp->buildPath), false);
+    string_append_cstr(&link, "/", false);
+    string_append_cstr(&link, string_get(&bp->object_name), false); 
+    string_append_cstr(&link, ".o", true);
+    string_append_cstr(&link, "-o", true);
+    string_append_cstr(&link, string_get(&bp->object_name), true);
+    string_append_cstr(&link, string_get(&bp->linkerFlags), true);
+
+}
+
+void cpm_buildprop_cleanup(BuildProperties_t* bp){
+    NOT_IMPLEMENTED;
+}
+
 void cpm_build_async(BuildProperties_t *bp)
 {
+    NOT_IMPLEMENTED
     
 }
 void cpm_build_async_poll(BuildProperties_t *bp)
 {
+    NOT_IMPLEMENTED
 }
 
 /* FILE & DIRECTORY OPERATIONS */
-void dir_ops(dirOps_e directory_operations, const char *dir_name);
+void dir_ops(dirOps_e directory_operations, const char *dir_name)
+{
+    NOT_IMPLEMENTED;
+}
 
 #endif
 
 /* MACROS */
-#define CPM_REBUILD_SELF(argc, argv)
+#define CPM_REBUILD_SELF(argc, argv) NOT_IMPLEMENTED
