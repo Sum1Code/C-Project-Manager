@@ -85,7 +85,7 @@ String_t string_cpy(String_t* str)
     String_t res; 
     res.m_cursize = str->m_cursize;
     res.m_cap = str->m_cap;
-    res.m_inner_ptr = malloc(str->m_cap);
+    res.m_inner_ptr = (char*) malloc(str->m_cap);
     strcpy(res.m_inner_ptr, str->m_inner_ptr);
     return res;
 }
@@ -101,7 +101,7 @@ void string_append_cstr(String_t *str, const char *cstr, bool append_space_endin
     if (NULL == str->m_inner_ptr)
     {
         str->m_cap = 5;
-        str->m_inner_ptr = calloc(1, str->m_cap);
+        str->m_inner_ptr = (char*) calloc(1, str->m_cap);
     }
     size_t cstrsize = strlen(cstr);
     char *new_inner = NULL;
