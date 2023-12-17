@@ -156,13 +156,16 @@ void cpm_log(logLevel_e loglvl, const char *fmt, ...)
     free(modstr.m_inner_ptr);
 }
 
-#define CPM_REBUILD_SELF(argc, argv)
-
 /* PRIMARY FUNCTIONS*/
 
 void cpm_configure_compiler(BuildProperties_t *bp, const char *compiler, const char *sources,
                             const char *build_path, const char *name, const char *extra_compiler_flags)
 {
+    bp->compiler = string_from_cstr(compiler);
+    bp->compiler = string_from_cstr(compiler);
+    bp->compiler = string_from_cstr(compiler);
+    bp->compiler = string_from_cstr(compiler);
+    bp->compiler = string_from_cstr(compiler);
 }
 
 void cpm_configure_linker(BuildProperties_t *bp, const char *Include_path, const char *library_path,
@@ -183,3 +186,6 @@ void cpm_build_async_poll(BuildProperties_t *bp)
 void dir_ops(dirOps_e directory_operations, const char *dir_name);
 
 #endif
+
+/* MACROS */
+#define CPM_REBUILD_SELF(argc, argv)
