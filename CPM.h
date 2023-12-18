@@ -1,12 +1,9 @@
 #pragma once
-#ifndef __CPM_AVAIL
-#define __CPM_AVAIL
+#ifndef CPM_AVAIL
+#define CPM_AVAIL
 #define NOT_IMPLEMENTED  cpm_log(CPM_LOG_ERROR, "%s is not implemented yet!\n", __func__);\
                          exit(1); 
 
-#ifndef GCC_VERSION
-#error "please define your current gcc major version by running gcc --version"
-#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +11,8 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <time.h>
+#include <dirent.h>
+#include <fnmatch.h>
 
 #define KERR "\x1B[31m" // RED
 #define KWAR "\x1B[33m" // YELLOW
@@ -61,11 +60,6 @@ typedef enum directory_operation
     DIR_CHECK
 } dirOps_e;
 
-typedef enum LinkType
-{
-    LINK_DYNAMIC,
-    LINK_STATIC
-} LinkType_e;
 
 // =========================== //
 //      STRING FUNCTIONS       //
@@ -126,7 +120,7 @@ void string_append_cstr(String_t *str, const char *cstr, bool append_space_endin
 
         while (str->m_cap < str->m_cursize + cstrsize + 2)
         {
-            str->m_cap += 5;
+            str->m_cap += 2;
         }
         new_inner = (char *)realloc(str->m_inner_ptr, str->m_cap);
         if (!new_inner)
@@ -197,7 +191,6 @@ void cpm_log(logLevel_e loglvl, const char *fmt, ...)
 //      PRIMARY FUNCTIONS      //
 // =========================== //
 
-
 void cpm_configure_compiler(BuildProperties_t *bp, const char *compiler, const char *sources, const char *Include_path,
                             const char *build_path, const char *name, const char *extra_compiler_flags)
 {
@@ -220,7 +213,7 @@ void cpm_configure_compiler(BuildProperties_t *bp, const char *compiler, const c
         exit(1);
     }
     if(NULL == Include_path)
-        bp->includePath = string_new();
+        bp->includePath = string_from_cstr("./");
     else bp->includePath = string_from_cstr(Include_path);
     bp->compiler_configured = true;
 }
@@ -233,7 +226,7 @@ void cpm_configure_linker(BuildProperties_t *bp, const char* linker, const char 
         exit(1);
     }
     if(NULL == linker) // if the linker is NULL then use the compiler as linker 
-        bp->linker = string_from_cstr("ld");
+        bp->linker = string_cpy(&bp->compiler);
     else bp->linker = string_from_cstr(linker); 
    
 
@@ -242,7 +235,7 @@ void cpm_configure_linker(BuildProperties_t *bp, const char* linker, const char 
     else bp->additionalLibrary = string_from_cstr(additional_library);
 
     if(NULL == library_path)
-        bp->libraryPath = string_new();
+        bp->libraryPath = string_from_cstr("./");
     else bp->libraryPath = string_from_cstr(library_path);
 
     if(NULL == linker_flags)
@@ -274,38 +267,61 @@ void cpm_build(BuildProperties_t *bp)
     string_append_cstr(&compile, string_get(&bp->object_name), false);
     string_append_cstr(&compile, ".o", true);
     cpm_log(CPM_LOG_INFO, "compiling: %s\n", string_get(&compile));
-    system(string_get(&compile));
+    if(system(string_get(&compile))){
+        cpm_log(CPM_LOG_ERROR, "Build command failed!\n");
+        exit(1);
+    }
 
     string_free(&compile);
 
 }
 
-void cpm_link(BuildProperties_t* bp, LinkType_e linktype)
+void cpm_link(BuildProperties_t* bp)
 {
-    String_t link = string_new();
-    string_append_cstr(&link, string_get(&bp->linker), true);   
-    switch(linktype)
-    {
-        case LINK_DYNAMIC:
-        string_append_cstr(&link, "--dynamic-linker", true);
-        string_append_cstr(&link, "/lib64/ld-linux-x86_64.so.2", true);
-        break;
-        case LINK_STATIC:
-        string_append_cstr(&link, "-static", true);
-        break;
+    int compiler_is_linker = strcmp(bp->compiler.m_inner_ptr, bp->linker.m_inner_ptr);
+    #ifndef CPM_SUPPRESS_LINKER_WARNING
+    if(0 != compiler_is_linker){
+        cpm_log(CPM_LOG_WARNING, "using custom linker, you will need to provide all extra arguments from the linker_flag\n");
+        cpm_log(CPM_LOG_WARNING, "supress this warning by defining CPM_SUPPRESS_LINKER_WARNING before including CPM.h\n\n");
     }
-    string_append_cstr(&link, string_get(&bp->buildPath), false);
-    string_append_cstr(&link, "/", false);
-    string_append_cstr(&link, string_get(&bp->object_name), false); 
-    string_append_cstr(&link, ".o", true);
-    string_append_cstr(&link, "-o", true);
-    string_append_cstr(&link, string_get(&bp->object_name), true);
-    string_append_cstr(&link, string_get(&bp->linkerFlags), true);
+    #endif
+        String_t link = string_new();
+        string_append_cstr(&link, string_get(&bp->linker), true);   
+        string_append_cstr(&link, string_get(&bp->buildPath), false);
+        string_append_cstr(&link, "/", false);
+        string_append_cstr(&link, string_get(&bp->object_name), false); 
+        string_append_cstr(&link, ".o", true);
+        string_append_cstr(&link, "-o", true);
+        string_append_cstr(&link, string_get(&bp->buildPath), false);
+        string_append_cstr(&link, "/", false);
+        string_append_cstr(&link, string_get(&bp->object_name), true);
+        string_append_cstr(&link, "-L", false);
+        string_append_cstr(&link, string_get(&bp->libraryPath), true);
+        string_append_cstr(&link, string_get(&bp->additionalLibrary), true);
+        if(!compiler_is_linker){
+            string_append_cstr(&link, "-I", false);
+            string_append_cstr(&link, string_get(&bp->includePath), true);
+        }
 
+        cpm_log(CPM_LOG_INFO, "linking: %s\n", string_get(&link));
+        if(system(string_get(&link))){
+        cpm_log(CPM_LOG_ERROR, "Build command failed!\n");
+        exit(1);
+    }
+    string_free(&link);
 }
 
 void cpm_buildprop_cleanup(BuildProperties_t* bp){
-    NOT_IMPLEMENTED;
+    string_free(&bp->additionalLibrary);
+    string_free(&bp->buildPath);
+    string_free(&bp->sourcesPath);
+    string_free(&bp->compiler);
+    string_free(&bp->CompilerFlags);
+    string_free(&bp->includePath);
+    string_free(&bp->libraryPath);
+    string_free(&bp->linker);
+    string_free(&bp->linkerFlags);
+    string_free(&bp->object_name);
 }
 
 void cpm_build_async(BuildProperties_t *bp)
@@ -318,13 +334,40 @@ void cpm_build_async_poll(BuildProperties_t *bp)
     NOT_IMPLEMENTED
 }
 
-/* FILE & DIRECTORY OPERATIONS */
-void dir_ops(dirOps_e directory_operations, const char *dir_name)
+// ============================== //
+//      FILE & DIRECTORY OPS      //
+// ============================== //
+
+void dir_ops(dirOps_e directory_operations, const char *dir_path)
 {
     NOT_IMPLEMENTED;
 }
 
-#endif
+String_t dir_glob(const char *dir_path, const char* pattern)
+{
+    DIR* dir; 
+    struct dirent* entry;
+    if ((dir = opendir(dir_path)) == NULL) {
+        cpm_log(CPM_LOG_ERROR, "Directory failed to open!\n");
+        perror("reason:");
+        exit(1);
+  }
+  String_t res = string_new();
+
+while ((entry = readdir(dir)) != NULL) {
+    if (fnmatch(pattern, entry->d_name, 0) == 0) {
+      string_append_cstr(&res, dir_path, false);
+      string_append_cstr(&res, "/", false);
+      string_append_cstr(&res, entry->d_name, true);
+        }
+    }
+    free(dir);
+    free(entry);
+    return res;
+}
+
+
 
 /* MACROS */
 #define CPM_REBUILD_SELF(argc, argv) NOT_IMPLEMENTED
+#endif //CPM_AVAIL
