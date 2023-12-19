@@ -1,9 +1,9 @@
 #pragma once
 #ifndef CPM_AVAIL
 #define CPM_AVAIL
-#define NOT_IMPLEMENTED  cpm_log(CPM_LOG_ERROR, "%s is not implemented yet!\n", __func__);\
-                         exit(1); 
-
+#define NOT_IMPLEMENTED                                               \
+    cpm_log(CPM_LOG_ERROR, "%s is not implemented yet!\n", __func__); \
+    exit(1);
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,6 +13,8 @@
 #include <time.h>
 #include <dirent.h>
 #include <fnmatch.h>
+
+#include <sys/stat.h>
 
 #define KERR "\x1B[31m" // RED
 #define KWAR "\x1B[33m" // YELLOW
@@ -60,7 +62,6 @@ typedef enum directory_operation
     DIR_CHECK
 } dirOps_e;
 
-
 // =========================== //
 //      STRING FUNCTIONS       //
 // =========================== //
@@ -81,16 +82,16 @@ String_t string_new()
     String_t res;
     res.m_cursize = 0;
     res.m_cap = 5;
-    res.m_inner_ptr = (char*) calloc(1, res.m_cap);
+    res.m_inner_ptr = (char *)calloc(1, res.m_cap);
     return res;
 }
 
-String_t string_cpy(String_t* str)
+String_t string_cpy(String_t *str)
 {
-    String_t res; 
+    String_t res;
     res.m_cursize = str->m_cursize;
     res.m_cap = str->m_cap;
-    res.m_inner_ptr = (char*) malloc(str->m_cap);
+    res.m_inner_ptr = (char *)malloc(str->m_cap);
     strcpy(res.m_inner_ptr, str->m_inner_ptr);
     return res;
 }
@@ -194,14 +195,17 @@ void cpm_log(logLevel_e loglvl, const char *fmt, ...)
 void cpm_configure_compiler(BuildProperties_t *bp, const char *compiler, const char *sources, const char *Include_path,
                             const char *build_path, const char *name, const char *extra_compiler_flags)
 {
-    
 
-    if (NULL != build_path) bp->buildPath = string_from_cstr(build_path);
-    else bp->buildPath = string_from_cstr(".");
-    if (NULL != extra_compiler_flags) bp->CompilerFlags = string_from_cstr(extra_compiler_flags);
-    else bp->CompilerFlags =  string_new();
-    
-    if(NULL != compiler || NULL != sources || NULL != name)
+    if (NULL != build_path)
+        bp->buildPath = string_from_cstr(build_path);
+    else
+        bp->buildPath = string_from_cstr(".");
+    if (NULL != extra_compiler_flags)
+        bp->CompilerFlags = string_from_cstr(extra_compiler_flags);
+    else
+        bp->CompilerFlags = string_new();
+
+    if (NULL != compiler || NULL != sources || NULL != name)
     {
         bp->compiler = string_from_cstr(compiler);
         bp->sourcesPath = string_from_cstr(sources);
@@ -212,35 +216,40 @@ void cpm_configure_compiler(BuildProperties_t *bp, const char *compiler, const c
         cpm_log(CPM_LOG_ERROR, "compiler, sourcesPath, and object_name should not be NULL\n");
         exit(1);
     }
-    if(NULL == Include_path)
+    if (NULL == Include_path)
         bp->includePath = string_from_cstr("./");
-    else bp->includePath = string_from_cstr(Include_path);
+    else
+        bp->includePath = string_from_cstr(Include_path);
     bp->compiler_configured = true;
 }
 
-void cpm_configure_linker(BuildProperties_t *bp, const char* linker, const char *library_path,
+void cpm_configure_linker(BuildProperties_t *bp, const char *linker, const char *library_path,
                           const char *additional_library, const char *linker_flags)
 {
-    if (!bp->compiler_configured){
+    if (!bp->compiler_configured)
+    {
         cpm_log(CPM_LOG_ERROR, "please run cpm_configure_compiler before cpm_configure_linker\n");
         exit(1);
     }
-    if(NULL == linker) // if the linker is NULL then use the compiler as linker 
+    if (NULL == linker) // if the linker is NULL then use the compiler as linker
         bp->linker = string_cpy(&bp->compiler);
-    else bp->linker = string_from_cstr(linker); 
-   
+    else
+        bp->linker = string_from_cstr(linker);
 
-    if(NULL == additional_library)
+    if (NULL == additional_library)
         bp->additionalLibrary = string_new();
-    else bp->additionalLibrary = string_from_cstr(additional_library);
+    else
+        bp->additionalLibrary = string_from_cstr(additional_library);
 
-    if(NULL == library_path)
+    if (NULL == library_path)
         bp->libraryPath = string_from_cstr("./");
-    else bp->libraryPath = string_from_cstr(library_path);
+    else
+        bp->libraryPath = string_from_cstr(library_path);
 
-    if(NULL == linker_flags)
+    if (NULL == linker_flags)
         bp->linkerFlags = string_new();
-    else bp->linkerFlags = string_from_cstr(linker_flags);
+    else
+        bp->linkerFlags = string_from_cstr(linker_flags);
 
     bp->linker_configured = true;
 }
@@ -250,7 +259,7 @@ void cpm_configure_linker(BuildProperties_t *bp, const char* linker, const char 
 */
 void cpm_build(BuildProperties_t *bp)
 {
-    if(1 != bp->compiler_configured)
+    if (1 != bp->compiler_configured)
     {
         cpm_log(CPM_LOG_ERROR, "buildProperties hasn't been configured properly!\n");
         cpm_log(CPM_LOG_ERROR, "make sure to run cpm_configure_compiler!\n");
@@ -267,51 +276,55 @@ void cpm_build(BuildProperties_t *bp)
     string_append_cstr(&compile, string_get(&bp->object_name), false);
     string_append_cstr(&compile, ".o", true);
     cpm_log(CPM_LOG_INFO, "compiling: %s\n", string_get(&compile));
-    if(system(string_get(&compile))){
+    if (system(string_get(&compile)))
+    {
         cpm_log(CPM_LOG_ERROR, "Build command failed!\n");
         exit(1);
     }
 
     string_free(&compile);
-
 }
 
-void cpm_link(BuildProperties_t* bp)
+void cpm_link(BuildProperties_t *bp)
 {
     int compiler_is_linker = strcmp(bp->compiler.m_inner_ptr, bp->linker.m_inner_ptr);
-    #ifndef CPM_SUPPRESS_LINKER_WARNING
-    if(0 != compiler_is_linker){
+#ifndef CPM_SUPPRESS_LINKER_WARNING
+    if (0 != compiler_is_linker)
+    {
         cpm_log(CPM_LOG_WARNING, "using custom linker, you will need to provide all extra arguments from the linker_flag\n");
         cpm_log(CPM_LOG_WARNING, "supress this warning by defining CPM_SUPPRESS_LINKER_WARNING before including CPM.h\n\n");
     }
-    #endif
-        String_t link = string_new();
-        string_append_cstr(&link, string_get(&bp->linker), true);   
-        string_append_cstr(&link, string_get(&bp->buildPath), false);
-        string_append_cstr(&link, "/", false);
-        string_append_cstr(&link, string_get(&bp->object_name), false); 
-        string_append_cstr(&link, ".o", true);
-        string_append_cstr(&link, "-o", true);
-        string_append_cstr(&link, string_get(&bp->buildPath), false);
-        string_append_cstr(&link, "/", false);
-        string_append_cstr(&link, string_get(&bp->object_name), true);
-        string_append_cstr(&link, "-L", false);
-        string_append_cstr(&link, string_get(&bp->libraryPath), true);
-        string_append_cstr(&link, string_get(&bp->additionalLibrary), true);
-        if(!compiler_is_linker){
-            string_append_cstr(&link, "-I", false);
-            string_append_cstr(&link, string_get(&bp->includePath), true);
-        }
+#endif
+    String_t link = string_new();
+    string_append_cstr(&link, string_get(&bp->linker), true);
+    string_append_cstr(&link, string_get(&bp->buildPath), false);
+    string_append_cstr(&link, "/", false);
+    string_append_cstr(&link, string_get(&bp->object_name), false);
+    string_append_cstr(&link, ".o", true);
+    string_append_cstr(&link, "-o", true);
+    string_append_cstr(&link, string_get(&bp->buildPath), false);
+    string_append_cstr(&link, "/", false);
+    string_append_cstr(&link, string_get(&bp->object_name), true);
+    string_append_cstr(&link, "-L", false);
+    string_append_cstr(&link, string_get(&bp->libraryPath), true);
+    string_append_cstr(&link, string_get(&bp->additionalLibrary), true);
+    if (!compiler_is_linker)
+    {
+        string_append_cstr(&link, "-I", false);
+        string_append_cstr(&link, string_get(&bp->includePath), true);
+    }
 
-        cpm_log(CPM_LOG_INFO, "linking: %s\n", string_get(&link));
-        if(system(string_get(&link))){
+    cpm_log(CPM_LOG_INFO, "linking: %s\n", string_get(&link));
+    if (system(string_get(&link)))
+    {
         cpm_log(CPM_LOG_ERROR, "Build command failed!\n");
         exit(1);
     }
     string_free(&link);
 }
 
-void cpm_buildprop_cleanup(BuildProperties_t* bp){
+void cpm_buildprop_cleanup(BuildProperties_t *bp)
+{
     string_free(&bp->additionalLibrary);
     string_free(&bp->buildPath);
     string_free(&bp->sourcesPath);
@@ -327,7 +340,6 @@ void cpm_buildprop_cleanup(BuildProperties_t* bp){
 void cpm_build_async(BuildProperties_t *bp)
 {
     NOT_IMPLEMENTED
-    
 }
 void cpm_build_async_poll(BuildProperties_t *bp)
 {
@@ -343,22 +355,25 @@ void dir_ops(dirOps_e directory_operations, const char *dir_path)
     NOT_IMPLEMENTED;
 }
 
-String_t dir_glob(const char *dir_path, const char* pattern)
+String_t dir_glob(const char *dir_path, const char *pattern)
 {
-    DIR* dir; 
-    struct dirent* entry;
-    if ((dir = opendir(dir_path)) == NULL) {
+    DIR *dir;
+    struct dirent *entry;
+    if ((dir = opendir(dir_path)) == NULL)
+    {
         cpm_log(CPM_LOG_ERROR, "Directory failed to open!\n");
         perror("reason:");
         exit(1);
-  }
-  String_t res = string_new();
+    }
+    String_t res = string_new();
 
-while ((entry = readdir(dir)) != NULL) {
-    if (fnmatch(pattern, entry->d_name, 0) == 0) {
-      string_append_cstr(&res, dir_path, false);
-      string_append_cstr(&res, "/", false);
-      string_append_cstr(&res, entry->d_name, true);
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (fnmatch(pattern, entry->d_name, 0) == 0)
+        {
+            string_append_cstr(&res, dir_path, false);
+            string_append_cstr(&res, "/", false);
+            string_append_cstr(&res, entry->d_name, true);
         }
     }
     free(dir);
@@ -366,8 +381,67 @@ while ((entry = readdir(dir)) != NULL) {
     return res;
 }
 
+// ========================= //
+//      GIT INTEGRATION      //
+// ========================= //
 
+void git_clone(const char *repo_url)
+{
+    String_t cmd = string_from_cstr("git");
+}
+
+void git_clone_folder(const char *repo_url, const char *folder_name, bool clone_root)
+{
+    NOT_IMPLEMENTED;
+}
+
+// ========================== //
+//     MODULE INTERGRATION    //
+// ========================== //
 
 /* MACROS */
-#define CPM_REBUILD_SELF(argc, argv) NOT_IMPLEMENTED
-#endif //CPM_AVAIL
+
+bool cmp_file_modtime(const char *file1, const char *file2)
+{
+    struct stat oneInfo, twoInfo;
+    if (-1 == stat(file1, &oneInfo))
+    {
+        cpm_log(CPM_LOG_ERROR, "Failed to stat file1 at %d\n", __LINE__);
+        perror("stat: ");
+        exit(1);
+    }
+    if (-1 == stat(file2, &twoInfo))
+    {
+        cpm_log(CPM_LOG_ERROR, "Failed to stat file2 at %d\n", __LINE__);
+        perror("stat: ");
+        exit(1);
+    }
+
+    return oneInfo.st_mtime > twoInfo.st_mtime;
+}
+#define GET_FILE_NAME(name) (strrchr(name, '/') ? strrchr(name, '/') + 1 : name)
+#define CPM_REBUILD_SELF(argc, argv)                                                                      \
+    if (cmp_file_modtime(__FILE__, argv[0]))                                                              \
+    {                                                                                                     \
+        BuildProperties_t _rebuild_prop;                                                                  \
+        String_t _change_name_cmd = string_from_cstr("mv ");                                              \
+        string_append_cstr(&_change_name_cmd, argv[0], true);                                             \
+        string_append_cstr(&_change_name_cmd, argv[0], false);                                            \
+        string_append_cstr(&_change_name_cmd, ".old", false);                                             \
+        cpm_log(CPM_LOG_WARNING, "changing %s to %s.old\n", argv[0], argv[0]);                            \
+        cpm_log(CPM_LOG_INFO, "running: %s\n", string_get(&_change_name_cmd));                            \
+        system(string_get(&_change_name_cmd));                                                            \
+        cpm_configure_compiler(&_rebuild_prop, "cc", __FILE__, NULL, NULL, GET_FILE_NAME(argv[0]), NULL); \
+        cpm_configure_linker(&_rebuild_prop, NULL, NULL, NULL, NULL);                                     \
+        cpm_log(CPM_LOG_WARNING, "rebuilding %s\n", __FILE__);                                            \
+        cpm_build(&_rebuild_prop);                                                                        \
+        cpm_link(&_rebuild_prop);                                                                         \
+        cpm_log(CPM_LOG_WARNING, "running new builder\n===========================================\n\n");   \
+        if (system(argv[0]))                                                                              \
+        {                                                                                                 \
+            cpm_log(CPM_LOG_ERROR, "failed to run new builder!\n");                                       \
+            exit(1);                                                                                      \
+        }                                                                                                 \
+        exit(0);                                                                                          \
+    }
+#endif // CPM_AVAIL
