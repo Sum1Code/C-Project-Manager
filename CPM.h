@@ -60,6 +60,7 @@ typedef struct STATUS
     int curr_errno;
     String_t errno_msg;
     String_t msg;
+    void* function_return;
 } status_t;
 
 typedef enum LOG_LEVEL
@@ -202,9 +203,9 @@ void cpm_log(logLevel_e loglvl, const char *fmt, ...)
     free(modstr.m_inner_ptr);
 }
 
-void cpm_panic(const char* msg);
+void panic(status_t* status)
 {
-    cpm_log(CPM_LOG_ERROR, "FATAL: ");
+    cpm_log(CPM_LOG_ERROR, "FATAL: process panicked: %s\n errno: %d\n errno_msg: %s\n", status->msg.m_inner_ptr, status->curr_errno, status->errno_msg.m_inner_ptr);
     exit(1);
 }
 
@@ -216,18 +217,21 @@ status_t status_create(int code, const char* custom_message)
     stat.curr_errno = errno;
     stat.errno_msg = string_from_cstr(strerror(errno));
     // CPM_ERROR: Failed to exec ...; errno: *errno, errnomsg: *errnomsg
-    // IFNULL: 
+    // IFNULL: errno *errno, errnomsg: *ernnomsg
 }
 
 // err callback would only be executed if the status return an error, fatal status automaticly panics the process
 // if err callback is null then default is to ignore, unless fatal 
-typedef void (*err_callback)();
+typedef void (*callback)();
 
-void status_response(status_t* status, err_callback callback)
+void status_response(status_t* status, callback err_callback, callback ok_callback)
 {
-    if(status->errcode == STATUS_ERR) callback();
-    if(status->errcode == STATUS_FATAL) panic();
+    if(status->errcode == STATUS_SUCCESS) if(ok_callback != NULL) ok_callback();
+    if(status->errcode == STATUS_ERR) if(err_callback != NULL) err_callback(); else {cpm_log(CPM_LOG_ERROR, "ERROR: %s\n errno: %d\n errno_msg: %s\n", status->msg.m_inner_ptr, status->curr_errno, status->errno_msg.m_inner_ptr);}
+    if(status->errcode == STATUS_FATAL) panic(status);
 
+    string_free(&status->msg);
+    string_free(&status->errno_msg);
 }
 
 // =========================== //
@@ -398,20 +402,18 @@ status_t dir_ops(dirOps_e directory_operations, const char *dir_path)
     {
     case DIR_CHECK:
         DIR* opdir = opendir(dir_path);
-        {
             if(opdir)
             {
                 closedir(opdir);
                 return status_create(STATUS_SUCCESS, "Success");
-            } else  return status_create(STATUS_ERR, "Error opening dir")
-        }
+            } else return status_create(STATUS_SUCCESS, "Succes");
         break;
     case DIR_CREATE:
     struct stat st; 
     if(-1 == stat(dir_path, &st)){
         if(0 == mkdir(dir_path, 0700))
-            return true;
-             else return false;
+            return status_create(STATUS_SUCCESS, "Success creating dir");
+        else return status_create(STATUS_ERR, "Folder already exists");
     }
     break;
     default:
