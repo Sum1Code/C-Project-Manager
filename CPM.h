@@ -354,15 +354,14 @@ bool dir_ops(dirOps_e directory_operations, const char *dir_path)
     switch (directory_operations)
     {
     case DIR_CHECK:
-        DIR* opdir = opendir(dir_path);
-    
+        DIR * opdir;
+        opdir =  opendir(dir_path);
         if (opdir)
         {
             closedir(opdir);
             return true;
         }
-        else
-            return false;
+        else return false;
         break;
     
     case DIR_CREATE:
