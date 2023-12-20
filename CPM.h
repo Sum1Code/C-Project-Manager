@@ -7,6 +7,8 @@
 
 #define STATUS_SUCCESS 1
 #define STATUS_ERR 0
+#define STATUS_FATAL -1
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,6 +58,7 @@ typedef struct STATUS
 {
     int errcode;
     int curr_errno;
+    String_t errno_msg;
     String_t msg;
 } status_t;
 
@@ -199,18 +202,32 @@ void cpm_log(logLevel_e loglvl, const char *fmt, ...)
     free(modstr.m_inner_ptr);
 }
 
-/* If custom_message is set to NULL then custom_message will be set to the current errno*/
-status_t create_status(int code, const char* custom_message)
+void cpm_panic(const char* msg);
+{
+    cpm_log(CPM_LOG_ERROR, "FATAL: ");
+    exit(1);
+}
+
+/* If custom_message is set to NULL then custom_message will be set to "status"*/
+status_t status_create(int code, const char* custom_message)
 {
     status_t stat;
     stat.errcode = code;
     stat.curr_errno = errno;
-    if(NULL == custom_message)
-    {
-        stat.msg = string_from_cstr(strerror(errno));
-    } else {
-        stat.msg = string_from_cstr(custom_message);
-    }
+    stat.errno_msg = string_from_cstr(strerror(errno));
+    // CPM_ERROR: Failed to exec ...; errno: *errno, errnomsg: *errnomsg
+    // IFNULL: 
+}
+
+// err callback would only be executed if the status return an error, fatal status automaticly panics the process
+// if err callback is null then default is to ignore, unless fatal 
+typedef void (*err_callback)();
+
+void status_response(status_t* status, err_callback callback)
+{
+    if(status->errcode == STATUS_ERR) callback();
+    if(status->errcode == STATUS_FATAL) panic();
+
 }
 
 // =========================== //
@@ -385,19 +402,16 @@ status_t dir_ops(dirOps_e directory_operations, const char *dir_path)
             if(opdir)
             {
                 closedir(opdir);
-                return create_status(STATUS_SUCCESS, "Success");
-            } else {
-                return create_status(STATUS_ERR, "")
-            }
+                return status_create(STATUS_SUCCESS, "Success");
+            } else  return status_create(STATUS_ERR, "Error opening dir")
         }
         break;
     case DIR_CREATE:
     struct stat st; 
     if(-1 == stat(dir_path, &st)){
         if(0 == mkdir(dir_path, 0700))
-        {
             return true;
-        } else return false;
+             else return false;
     }
     break;
     default:

@@ -14,6 +14,5 @@ int main(int argc, char** argv)
     // String_t str = dir_glob("fmts/raylib/src", "*.c");
     // cpm_log(CPM_LOG_INFO, "%s\n", str.m_inner_ptr);
     // string_free(&str);
-
     cpm_log(CPM_LOG_INFO, "%d\n", __LINE__);
 }
