@@ -5,6 +5,8 @@
     cpm_log(CPM_LOG_ERROR, "%s is not implemented yet!\n", __func__); \
     exit(1);
 
+#define STATUS_SUCCESS 1
+#define STATUS_ERR 0
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,6 +15,7 @@
 #include <time.h>
 #include <dirent.h>
 #include <fnmatch.h>
+#include <errno.h>
 
 #include <sys/stat.h>
 
@@ -47,6 +50,14 @@ typedef struct BuildProperties
     int compiler_configured;
     int linker_configured;
 } BuildProperties_t;
+
+/*CONVENTION: errcode 1 = success and other than 1 means error*/
+typedef struct STATUS
+{
+    int errcode;
+    int curr_errno;
+    String_t msg;
+} status_t;
 
 typedef enum LOG_LEVEL
 {
@@ -186,6 +197,20 @@ void cpm_log(logLevel_e loglvl, const char *fmt, ...)
     va_end(args);
     fprintf(stdout, "%s", KNRM);
     free(modstr.m_inner_ptr);
+}
+
+/* If custom_message is set to NULL then custom_message will be set to the current errno*/
+status_t create_status(int code, const char* custom_message)
+{
+    status_t stat;
+    stat.errcode = code;
+    stat.curr_errno = errno;
+    if(NULL == custom_message)
+    {
+        stat.msg = string_from_cstr(strerror(errno));
+    } else {
+        stat.msg = string_from_cstr(custom_message);
+    }
 }
 
 // =========================== //
@@ -350,9 +375,34 @@ void cpm_build_async_poll(BuildProperties_t *bp)
 //      FILE & DIRECTORY OPS      //
 // ============================== //
 
-void dir_ops(dirOps_e directory_operations, const char *dir_path)
+status_t dir_ops(dirOps_e directory_operations, const char *dir_path)
 {
-    NOT_IMPLEMENTED;
+    switch (directory_operations)
+    {
+    case DIR_CHECK:
+        DIR* opdir = opendir(dir_path);
+        {
+            if(opdir)
+            {
+                closedir(opdir);
+                return create_status(STATUS_SUCCESS, "Success");
+            } else {
+                return create_status(STATUS_ERR, "")
+            }
+        }
+        break;
+    case DIR_CREATE:
+    struct stat st; 
+    if(-1 == stat(dir_path, &st)){
+        if(0 == mkdir(dir_path, 0700))
+        {
+            return true;
+        } else return false;
+    }
+    break;
+    default:
+        break;
+    }
 }
 
 String_t dir_glob(const char *dir_path, const char *pattern)
@@ -385,9 +435,23 @@ String_t dir_glob(const char *dir_path, const char *pattern)
 //      GIT INTEGRATION      //
 // ========================= //
 
-void git_clone(const char *repo_url)
+void git_clone(const char *repo_url, const char *target_dir)
 {
-    String_t cmd = string_from_cstr("git");
+    String_t cmd = string_from_cstr("git ");
+    string_append_cstr(&cmd, "clone", true);
+    string_append_cstr(&cmd, repo_url, true);
+    if(NULL != target_dir)
+    {
+        string_append_cstr(&cmd, target_dir, true);
+    } else
+    {
+        string_append_cstr(&cmd, ".", true);
+    }
+    
+    if(system(string_get(&cmd)))
+    {
+        cpm_log(CPM_LOG_WARNING, "Git failed to clone %s maybe the repo already existed!", repo_url);
+    }
 }
 
 void git_clone_folder(const char *repo_url, const char *folder_name, bool clone_root)
