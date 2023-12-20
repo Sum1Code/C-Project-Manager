@@ -5,10 +5,6 @@
     cpm_log(CPM_LOG_ERROR, "%s is not implemented yet!\n", __func__); \
     exit(1);
 
-#define STATUS_SUCCESS 1
-#define STATUS_ERR 0
-#define STATUS_FATAL -1
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,20 +50,12 @@ typedef struct BuildProperties
 } BuildProperties_t;
 
 /*CONVENTION: errcode 1 = success and other than 1 means error*/
-typedef struct STATUS
-{
-    int errcode;
-    int curr_errno;
-    String_t errno_msg;
-    String_t msg;
-    void* function_return;
-} status_t;
 
 typedef enum LOG_LEVEL
 {
     CPM_LOG_INFO,
     CPM_LOG_WARNING,
-    CPM_LOG_ERROR,
+    CPM_LOG_ERROR
 } logLevel_e;
 
 typedef enum directory_operation
@@ -202,41 +190,6 @@ void cpm_log(logLevel_e loglvl, const char *fmt, ...)
     fprintf(stdout, "%s", KNRM);
     free(modstr.m_inner_ptr);
 }
-
-void panic(status_t* status)
-{
-    cpm_log(CPM_LOG_ERROR, "FATAL: process panicked: %s\n errno: %d\n errno_msg: %s\n", status->msg.m_inner_ptr, status->curr_errno, status->errno_msg.m_inner_ptr);
-    exit(1);
-}
-
-/* If custom_message is set to NULL then custom_message will be set to "status"*/
-status_t status_create(int code, const char* custom_message)
-{
-    status_t stat;
-    stat.errcode = code;
-    stat.curr_errno = errno;
-    stat.errno_msg = string_from_cstr(strerror(errno));
-    // CPM_ERROR: Failed to exec ...; errno: *errno, errnomsg: *errnomsg
-    // IFNULL: errno *errno, errnomsg: *ernnomsg
-}
-
-// err callback would only be executed if the status return an error, fatal status automaticly panics the process
-// if err callback is null then default is to ignore, unless fatal 
-typedef void (*callback)();
-
-void status_response(status_t* status, callback err_callback, callback ok_callback)
-{
-    if(status->errcode == STATUS_SUCCESS) if(ok_callback != NULL) ok_callback();
-    if(status->errcode == STATUS_ERR) if(err_callback != NULL) err_callback(); else {cpm_log(CPM_LOG_ERROR, "ERROR: %s\n errno: %d\n errno_msg: %s\n", status->msg.m_inner_ptr, status->curr_errno, status->errno_msg.m_inner_ptr);}
-    if(status->errcode == STATUS_FATAL) panic(status);
-
-    string_free(&status->msg);
-    string_free(&status->errno_msg);
-}
-
-// =========================== //
-//      PRIMARY FUNCTIONS      //
-// =========================== //
 
 void cpm_configure_compiler(BuildProperties_t *bp, const char *compiler, const char *sources, const char *Include_path,
                             const char *build_path, const char *name, const char *extra_compiler_flags)
@@ -396,29 +349,36 @@ void cpm_build_async_poll(BuildProperties_t *bp)
 //      FILE & DIRECTORY OPS      //
 // ============================== //
 
-status_t dir_ops(dirOps_e directory_operations, const char *dir_path)
+bool dir_ops(dirOps_e directory_operations, const char *dir_path)
 {
     switch (directory_operations)
     {
     case DIR_CHECK:
         DIR* opdir = opendir(dir_path);
-            if(opdir)
-            {
-                closedir(opdir);
-                return status_create(STATUS_SUCCESS, "Success");
-            } else return status_create(STATUS_SUCCESS, "Succes");
+    
+        if (opdir)
+        {
+            closedir(opdir);
+            return true;
+        }
+        else
+            return false;
         break;
+    
     case DIR_CREATE:
-    struct stat st; 
-    if(-1 == stat(dir_path, &st)){
-        if(0 == mkdir(dir_path, 0700))
-            return status_create(STATUS_SUCCESS, "Success creating dir");
-        else return status_create(STATUS_ERR, "Folder already exists");
-    }
-    break;
+        struct stat st;
+        if (-1 == stat(dir_path, &st))
+        {
+            if (0 == mkdir(dir_path, 0700))
+                return true;
+            else
+                return false;
+        }    
+        break;
     default:
         break;
     }
+    
 }
 
 String_t dir_glob(const char *dir_path, const char *pattern)
@@ -456,15 +416,16 @@ void git_clone(const char *repo_url, const char *target_dir)
     String_t cmd = string_from_cstr("git ");
     string_append_cstr(&cmd, "clone", true);
     string_append_cstr(&cmd, repo_url, true);
-    if(NULL != target_dir)
+    if (NULL != target_dir)
     {
         string_append_cstr(&cmd, target_dir, true);
-    } else
+    }
+    else
     {
         string_append_cstr(&cmd, ".", true);
     }
-    
-    if(system(string_get(&cmd)))
+
+    if (system(string_get(&cmd)))
     {
         cpm_log(CPM_LOG_WARNING, "Git failed to clone %s maybe the repo already existed!", repo_url);
     }
@@ -516,7 +477,7 @@ bool cmp_file_modtime(const char *file1, const char *file2)
         cpm_log(CPM_LOG_WARNING, "rebuilding %s\n", __FILE__);                                            \
         cpm_build(&_rebuild_prop);                                                                        \
         cpm_link(&_rebuild_prop);                                                                         \
-        cpm_log(CPM_LOG_WARNING, "running new builder\n===========================================\n\n");   \
+        cpm_log(CPM_LOG_WARNING, "running new builder\n===========================================\n\n"); \
         if (system(argv[0]))                                                                              \
         {                                                                                                 \
             cpm_log(CPM_LOG_ERROR, "failed to run new builder!\n");                                       \
